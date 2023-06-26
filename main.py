@@ -4,6 +4,7 @@ import httpx
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import IntegrityError
 
 app = FastAPI()
 
@@ -37,14 +38,27 @@ async def fetch_data():
 
     session = SessionLocal()
 
-    for post in posts:
-        data_entry = Data(title=post["title"], body=post["body"])
-        session.add(data_entry)
+    try:
+        for post in posts:
+            existing_entry = session.query(Data).filter_by(title=post["title"]).first()
 
-    session.commit()
-    session.close()
+            if existing_entry:
+                # Entry already exists, update it
+                existing_entry.body = post["body"]
+            else:
+                # Entry does not exist, create a new entry
+                data_entry = Data(title=post["title"], body=post["body"])
+                session.add(data_entry)
 
-    return {"message": "Data stored successfully!"}
+        session.commit()
+        return {"message": "Data stored successfully!"}
+
+    except IntegrityError:
+        session.rollback()
+        return {"message": "IntegrityError occurred while storing data"}
+
+    finally:
+        session.close()
 
 
 @app.websocket("/ws/ping")
